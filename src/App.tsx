@@ -1,65 +1,56 @@
-import { useState } from "react";
-import { Live2DCanvas } from "./components/Live2DCanvas";
-import { ChatBox } from "./components/ChatBox";
-import { CharacterSelect } from "./components/CharacterSelect";
-import { useCharacter } from "./hooks/useCharacter";
-import { useChat } from "./hooks/useChat";
-import { useVoice } from "./hooks/useVoice";
+import { useState, useCallback, useRef, useEffect } from "react";
+import { Application } from "@pixi/app";
+import { Live2DModel, config } from "pixi-live2d-display";
+import { Ticker } from "@pixi/ticker";
+
+// Register the ticker
+config.ticker = Ticker;
+
+// Register the application to Live2DModel
+config.applicationOptions = {
+  backgroundAlpha: 0,
+};
 
 function App() {
-  const [isCharacterSelected, setIsCharacterSelected] = useState(false);
-  const { character, setCharacter } = useCharacter();
-  const { messages, addMessage } = useChat();
-  const { speak } = useVoice();
+  const [app, setApp] = useState<Application | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  const handleCharacterSelect = (selectedCharacter: any) => {
-    setCharacter(selectedCharacter);
-    setIsCharacterSelected(true);
-  };
+  const initPixi = useCallback(async () => {
+    if (!canvasRef.current) return;
 
-  const handleSendMessage = async (message: string) => {
-    if (!character) return;
+    const _app = new Application({
+      view: canvasRef.current,
+      autoStart: true,
+      backgroundAlpha: 0,
+      resizeTo: window,
+    });
 
-    addMessage({ role: "user", content: message });
+    const model = await Live2DModel.from("/hiyori/hiyori_free_t08.model3.json");
 
-    try {
-      const response = await fetch("http://localhost:3000/api/chat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          message,
-          character: character.name,
-        }),
-      });
+    // Configure the model
+    model.scale.set(0.5);
+    model.anchor.set(0.5, 0.5);
+    model.position.set(_app.screen.width / 2, _app.screen.height / 2);
 
-      const data = await response.json();
-      const reply = data.message;
+    // Add the model to the stage
+    _app.stage.addChild(model);
 
-      addMessage({ role: "assistant", content: reply });
-      speak(reply);
-    } catch (error) {
-      console.error("Error sending message:", error);
-    }
-  };
+    setApp(_app);
+  }, []);
+
+  useEffect(() => {
+    initPixi();
+
+    return () => {
+      if (app) {
+        app.destroy(true);
+      }
+    };
+  }, [initPixi, app]);
 
   return (
-    <div className="flex h-screen bg-gray-100">
-      <div className="flex-1 flex flex-col">
-        {isCharacterSelected ? (
-          <>
-            <div className="flex-1 relative">
-              <Live2DCanvas />
-            </div>
-            <div className="h-1/4 bg-white p-4">
-              <ChatBox messages={messages} onSendMessage={handleSendMessage} />
-            </div>
-          </>
-        ) : (
-          <CharacterSelect onSelect={handleCharacterSelect} />
-        )}
-      </div>
+    <div className="App">
+      <canvas ref={canvasRef} />
     </div>
   );
 }
